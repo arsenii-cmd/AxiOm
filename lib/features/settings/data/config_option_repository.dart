@@ -25,19 +25,19 @@ abstract class ConfigOptions {
 
   static final balancerStrategy = PreferencesNotifier.create<BalancerStrategy, String>(
     "balancer-strategy",
-    BalancerStrategy.roundRobin,
+    BalancerStrategy.consistentHash,
     mapFrom: (value) => BalancerStrategy.values.firstWhere((e) => e.key == value),
     mapTo: (value) => value.key,
   );
 
   static final region = PreferencesNotifier.create<Region, String>(
     "region",
-    Region.other,
+    Region.ru,
     mapFrom: Region.values.byName,
     mapTo: (value) => value.name,
   );
   static final useXrayCoreWhenPossible = PreferencesNotifier.create<bool, bool>("use-xray-core-when-possible", false);
-  static final blockAds = PreferencesNotifier.create<bool, bool>("block-ads", false);
+  static final blockAds = PreferencesNotifier.create<bool, bool>("block-ads", true);
   static final logLevel = PreferencesNotifier.create<LogLevel, String>(
     "log-level",
     LogLevel.warn,
@@ -49,7 +49,7 @@ abstract class ConfigOptions {
 
   static final ipv6Mode = PreferencesNotifier.create<IPv6Mode, String>(
     "ipv6-mode",
-    IPv6Mode.disable,
+    IPv6Mode.enable,
     mapFrom: (value) => IPv6Mode.values.firstWhere((e) => e.key == value),
     mapTo: (value) => value.key,
   );
@@ -169,7 +169,7 @@ abstract class ConfigOptions {
     validator: (value) => isPort(value.toString()),
   );
 
-  static final bypassLan = PreferencesNotifier.create<bool, bool>("bypass-lan", false);
+  static final bypassLan = PreferencesNotifier.create<bool, bool>("bypass-lan", true);
 
   static final allowConnectionFromLan = PreferencesNotifier.create<bool, bool>("allow-connection-from-lan", false);
 
@@ -179,7 +179,7 @@ abstract class ConfigOptions {
 
   static final independentDnsCache = PreferencesNotifier.create<bool, bool>("independent-dns-cache", true);
 
-  static final enableTlsFragment = PreferencesNotifier.create<bool, bool>("enable-tls-fragment", false);
+  static final enableTlsFragment = PreferencesNotifier.create<bool, bool>("enable-tls-fragment", true);
 
   static final fragmentPackets = PreferencesNotifier.create<String, String>(
     "fragment-packets",
@@ -189,25 +189,25 @@ abstract class ConfigOptions {
 
   static final tlsFragmentSize = PreferencesNotifier.create<OptionalRange, String>(
     "tls-fragment-size",
-    const OptionalRange(min: 10, max: 30),
+    const OptionalRange(min: 10, max: 50),
     mapFrom: OptionalRange.parse,
     mapTo: const OptionalRangeJsonConverter().toJson,
   );
 
   static final tlsFragmentSleep = PreferencesNotifier.create<OptionalRange, String>(
     "tls-fragment-sleep",
-    const OptionalRange(min: 2, max: 8),
+    const OptionalRange(min: 10, max: 100),
     mapFrom: OptionalRange.parse,
     mapTo: const OptionalRangeJsonConverter().toJson,
   );
 
-  static final enableTlsMixedSniCase = PreferencesNotifier.create<bool, bool>("enable-tls-mixed-sni-case", false);
+  static final enableTlsMixedSniCase = PreferencesNotifier.create<bool, bool>("enable-tls-mixed-sni-case", true);
 
-  static final enableTlsPadding = PreferencesNotifier.create<bool, bool>("enable-tls-padding", false);
+  static final enableTlsPadding = PreferencesNotifier.create<bool, bool>("enable-tls-padding", true);
 
   static final tlsPaddingSize = PreferencesNotifier.create<OptionalRange, String>(
     "tls-padding-size",
-    const OptionalRange(min: 1, max: 1500),
+    const OptionalRange(min: 1300, max: 1500),
     mapFrom: OptionalRange.parse,
     mapTo: const OptionalRangeJsonConverter().toJson,
   );

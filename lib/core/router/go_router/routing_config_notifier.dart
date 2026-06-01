@@ -42,11 +42,11 @@ final loadingConfig = RoutingConfig(
 );
 
 String getNameOfBranch(bool isMobileBreakpoint, bool showProfilesAction, int index) => isMobileBreakpoint
-    ? ['home', 'settings'][index]
+    ? ['home', 'profiles', 'logs', 'settings'][index]
     : ['home', if (showProfilesAction) 'profiles', 'settings', 'logs', 'about'][index];
 
 int getIndexOfBranch(bool isMobileBreakpoint, bool showProfilesAction, String name) => isMobileBreakpoint
-    ? ['home', 'settings'].indexOf(name)
+    ? ['home', 'profiles', 'logs', 'settings'].indexOf(name)
     : ['home', if (showProfilesAction) 'profiles', 'settings', 'logs', 'about'].indexOf(name);
 
 @Riverpod(keepAlive: true)
@@ -56,7 +56,7 @@ class RoutingConfigNotifier extends _$RoutingConfigNotifier {
     final isMobileBreakpoint = ref.watch(isMobileBreakpointProvider);
     final bool showProfilesAction;
     if (isMobileBreakpoint == true) {
-      showProfilesAction = false;
+      showProfilesAction = false; // mobile always shows profiles as a dedicated branch
     } else {
       showProfilesAction = ref.watch(hasAnyProfileProvider).value ?? false;
     }
@@ -100,6 +100,7 @@ class RoutingConfigNotifier extends _$RoutingConfigNotifier {
             showProfilesAction: showProfilesAction,
           ),
           branches: <StatefulShellBranch>[
+            // Branch 0: Home
             StatefulShellBranch(
               routes: <GoRoute>[
                 GoRoute(
@@ -113,21 +114,12 @@ class RoutingConfigNotifier extends _$RoutingConfigNotifier {
                       pageBuilder: (_, state) =>
                           customTransition(TransitionType.fade, state.pageKey, const ProxiesOverviewPage()),
                     ),
-                    if (isMobileBreakpoint)
-                      GoRoute(
-                        name: 'profileDetails',
-                        path: '/profile-details/:id',
-                        pageBuilder: (_, state) => customTransition(
-                          TransitionType.fade,
-                          state.pageKey,
-                          ProfileDetailsPage(id: state.pathParameters['id']!),
-                        ),
-                      ),
                   ],
                 ),
               ],
             ),
-            if (showProfilesAction)
+            // Branch 1: Profiles (mobile: always; desktop: when showProfilesAction)
+            if (isMobileBreakpoint || showProfilesAction)
               StatefulShellBranch(
                 routes: <GoRoute>[
                   GoRoute(
@@ -148,6 +140,18 @@ class RoutingConfigNotifier extends _$RoutingConfigNotifier {
                   ),
                 ],
               ),
+            // Branch 2: Logs (mobile only as tab; desktop: separate branch below)
+            if (isMobileBreakpoint)
+              StatefulShellBranch(
+                routes: <GoRoute>[
+                  GoRoute(
+                    name: 'logs',
+                    path: '/logs',
+                    builder: (_, _) => FocusScope(node: branchesScope['logs'], child: const LogsPage()),
+                  ),
+                ],
+              ),
+            // Branch 2-3: Settings
             StatefulShellBranch(
               routes: <GoRoute>[
                 GoRoute(
@@ -206,24 +210,19 @@ class RoutingConfigNotifier extends _$RoutingConfigNotifier {
                       pageBuilder: (_, state) =>
                           customTransition(TransitionType.slide, state.pageKey, const WarpOptionsPage()),
                     ),
-                    if (isMobileBreakpoint) ...[
-                      GoRoute(
-                        name: 'logs',
-                        path: '/logs',
-                        pageBuilder: (_, state) =>
-                            customTransition(TransitionType.slide, state.pageKey, const LogsPage()),
-                      ),
+                    // mobile: about accessible from settings; logs is now a top-level tab
+                    if (isMobileBreakpoint)
                       GoRoute(
                         name: 'about',
                         path: '/about',
                         pageBuilder: (_, state) =>
                             customTransition(TransitionType.slide, state.pageKey, const AboutPage()),
                       ),
-                    ],
                   ],
                 ),
               ],
             ),
+            // Desktop-only: Logs and About branches
             if (!isMobileBreakpoint) ...[
               StatefulShellBranch(
                 routes: <GoRoute>[

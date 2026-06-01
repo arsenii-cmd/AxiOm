@@ -68,3 +68,21 @@ app.*.map.json
 # Windows Self-Signed for msix
 windows/sign.pfx
 windows/sign.cer
+
+# Signing keys / secrets (DO NOT COMMIT)
+android/key.properties
+android/app/release.jks
+**/*.jks
+**/*.keystore
+**/*.p12
+**/*.pfx
+**/*.p8
+**/*.pem
+**/*.cer
+**/*.mobileprovision
+key.properties
+**/google-services.json
+**/GoogleService-Info.plist
+.env
+*.env
+.env.*

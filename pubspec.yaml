@@ -157,6 +157,10 @@ flutter:
     # - assets/core/geoip.db
     # - assets/core/geosite.db
     - assets/images/logo.svg
+    - assets/images/connect_button.svg
+    - assets/images/connect_button_connected.svg
+    - assets/images/navbar_icon.svg
+    - assets/images/navbar_icon_connected.svg
     - assets/images/tray_icon.ico
     - assets/images/tray_icon.png
     - assets/images/tray_icon_dark.ico

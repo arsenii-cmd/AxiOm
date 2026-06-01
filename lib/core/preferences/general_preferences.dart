@@ -83,8 +83,8 @@ abstract class Preferences {
 
   static final disableMemoryLimit = PreferencesNotifier.create<bool, bool>(
     "disable_memory_limit",
-    // disable memory limit on desktop by default
-    PlatformUtils.isDesktop,
+    // disable memory limit by default on all platforms
+    true,
   );
 
   static final perAppProxyMode = PreferencesNotifier.create<PerAppProxyMode, String>(

@@ -159,10 +159,8 @@ class ProfileTile extends HookConsumerWidget {
                                   : t.pages.profiles.nonActiveProfileName(name: profile.name),
                             ),
                           if (subInfo != null) ...[
-                            const Gap(4),
-                            RemainingTrafficIndicator(subInfo.ratio),
-                            const Gap(4),
-                            ProfileSubscriptionInfo(subInfo),
+                            const Gap(8),
+                            _DualMeterRow(subInfo: subInfo),
                             const Gap(4),
                           ],
                         ],
@@ -550,6 +548,129 @@ class NewSiteSubscriptionInfo extends HookConsumerWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+// Dual meter: traffic bar on left, days bar on right
+class _DualMeterRow extends StatelessWidget {
+  const _DualMeterRow({required this.subInfo});
+  final SubscriptionInfo subInfo;
+
+  @override
+  Widget build(BuildContext context) {
+    final trafficPct = subInfo.ratio.clamp(0.0, 1.0);
+    final trafficColor = trafficPct > 0.8
+        ? const Color(0xFFD9CD7B)
+        : const Color(0xFF5BA3FF);
+
+    final dayRatio = subInfo.remainingRatio.clamp(0.0, 1.0);
+    final daysColor = dayRatio < 0.2
+        ? const Color(0xFFD9CD7B)
+        : const Color(0xFF5DCAA5);
+
+    final usedGB = subInfo.consumption / 1073741824.0;
+    final totalGB = subInfo.total / 1073741824.0;
+    final trafficLabel = subInfo.total > 10 * 1099511627776
+        ? '∞ ГБ'
+        : '${usedGB.toStringAsFixed(1)} / ${totalGB.toStringAsFixed(0)} ГБ';
+
+    final daysLeft = subInfo.isExpired ? 0 : subInfo.remaining.inDays;
+
+    return Row(
+      children: [
+        Expanded(
+          child: _Meter(
+            label: 'ТРАФИК',
+            value: trafficLabel,
+            progress: trafficPct,
+            color: trafficColor,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _Meter(
+            label: 'ДНИ',
+            value: '$daysLeft',
+            sub: 'осталось',
+            progress: dayRatio,
+            color: daysColor,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _Meter extends StatelessWidget {
+  const _Meter({
+    required this.label,
+    required this.value,
+    this.sub,
+    required this.progress,
+    required this.color,
+  });
+
+  final String label;
+  final String value;
+  final String? sub;
+  final double progress;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 8.5,
+            letterSpacing: 1.4,
+            fontWeight: FontWeight.w500,
+            color: theme.colorScheme.onSurfaceVariant.withValues(alpha: .55),
+          ),
+        ),
+        const SizedBox(height: 3),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
+          children: [
+            Flexible(
+              child: Text(
+                value,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w500,
+                  letterSpacing: -0.3,
+                  color: theme.colorScheme.onSurface,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            if (sub != null) ...[
+              const SizedBox(width: 4),
+              Text(
+                sub!,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: theme.colorScheme.onSurfaceVariant.withValues(alpha: .6),
+                ),
+              ),
+            ],
+          ],
+        ),
+        const SizedBox(height: 5),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(2),
+          child: LinearProgressIndicator(
+            value: progress,
+            minHeight: 4,
+            backgroundColor: theme.colorScheme.surfaceContainerHighest,
+            valueColor: AlwaysStoppedAnimation<Color>(color),
+          ),
+        ),
+      ],
     );
   }
 }

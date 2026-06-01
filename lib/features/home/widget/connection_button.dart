@@ -1,12 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:gap/gap.dart';
 import 'package:hiddify/core/localization/translations.dart';
-import 'package:hiddify/core/model/failures.dart';
 import 'package:hiddify/core/router/bottom_sheets/bottom_sheets_notifier.dart';
 import 'package:hiddify/core/router/dialog/dialog_notifier.dart';
-import 'package:hiddify/core/router/dialog/widgets/custom_alert_dialog.dart';
 import 'package:hiddify/core/theme/theme_extensions.dart';
 import 'package:hiddify/core/widget/animated_text.dart';
 import 'package:hiddify/features/connection/model/connection_status.dart';
@@ -62,8 +63,6 @@ class ConnectionButton extends HookConsumerWidget {
     //   //   },
     //   // );
 
-    const buttonTheme = ConnectionButtonTheme.light;
-
     //   // return CircleDesignWidget(
     //   //   onTap: switch (connectionStatus) {
     //   //     // AsyncData(value: Disconnected()) || AsyncError() => () async {
@@ -108,6 +107,29 @@ class ConnectionButton extends HookConsumerWidget {
     //   //   animationValue: animationValue,
     //   // );
     // }
+
+    const buttonTheme = ConnectionButtonTheme.light;
+
+    // isConnected drives the timer — NOT delay, so ping retests don't reset the clock
+    final isConnected = connectionStatus.valueOrNull is Connected && requiresReconnect != true;
+    final fullyConnected = isConnected && delay > 0 && delay < 65000;
+
+    final connectedAt = useRef<DateTime?>(null);
+    final elapsedSeconds = useState(0);
+    useEffect(() {
+      if (isConnected) {
+        connectedAt.value ??= DateTime.now();
+        final timer = Timer.periodic(const Duration(seconds: 1), (_) {
+          elapsedSeconds.value = DateTime.now().difference(connectedAt.value!).inSeconds;
+        });
+        return timer.cancel;
+      } else {
+        connectedAt.value = null;
+        elapsedSeconds.value = 0;
+        return null;
+      }
+    }, [isConnected]); // depend only on connection state, not delay
+
     var secureLabel =
         (ref.watch(ConfigOptions.enableWarp) && ref.watch(ConfigOptions.warpDetourMode) == WarpDetourMode.warpOverProxy)
         ? t.connection.secure
@@ -115,7 +137,29 @@ class ConnectionButton extends HookConsumerWidget {
     if (delay <= 0 || delay > 65000 || connectionStatus.value != const Connected()) {
       secureLabel = "";
     }
+
+    // Extra widget below the main label based on connection state
+    final Widget? extraWidget = switch (connectionStatus) {
+      AsyncData(value: Disconnected()) => const _IdleSubtitle(),
+      AsyncData(value: Connected()) when delay <= 0 || delay >= 65000 => const _HandshakeIndicator(),
+      AsyncData(value: Connected()) when fullyConnected => _ElapsedTimer(seconds: elapsedSeconds.value),
+      AsyncError() => _RetryPill(
+          onRetry: () async {
+            if (ref.read(activeProfileProvider).valueOrNull == null) {
+              await ref.read(dialogNotifierProvider.notifier).showNoActiveProfile();
+              ref.read(bottomSheetsNotifierProvider.notifier).showAddProfile();
+              return;
+            }
+            if (await ref.read(dialogNotifierProvider.notifier).showExperimentalFeatureNotice()) {
+              await ref.read(connectionNotifierProvider.notifier).toggleConnection();
+            }
+          },
+        ),
+      _ => null,
+    };
+
     return _ConnectionButton(
+      extraWidget: extraWidget,
       onTap: switch (connectionStatus) {
         AsyncData(value: Connected()) when requiresReconnect == true => () async {
           final activeProfile = await ref.read(activeProfileProvider.future);
@@ -163,9 +207,11 @@ class ConnectionButton extends HookConsumerWidget {
         AsyncData(value: Connected()) => Assets.images.connectNorouz,
         AsyncData(value: _) => Assets.images.disconnectNorouz,
         _ => Assets.images.disconnectNorouz,
-        AsyncData(value: Disconnected()) || AsyncError() => Assets.images.disconnectNorouz,
-        AsyncData(value: Connected()) => Assets.images.connectNorouz,
-        _ => Assets.images.disconnectNorouz,
+      },
+      isConnected: switch (connectionStatus) {
+        AsyncData(value: Connected()) when requiresReconnect == true => false,
+        AsyncData(value: Connected()) => true,
+        _ => false,
       },
       newButtonColor: switch (connectionStatus) {
         AsyncData(value: Connected()) when requiresReconnect == true => Colors.teal,
@@ -198,6 +244,8 @@ class _ConnectionButton extends StatelessWidget {
     required this.newButtonColor,
     required this.animated,
     required this.secureLabel,
+    required this.isConnected,
+    this.extraWidget,
   });
 
   final VoidCallback onTap;
@@ -207,50 +255,64 @@ class _ConnectionButton extends StatelessWidget {
   final AssetGenImage image;
   final bool useImage;
   final String secureLabel;
-
   final Color newButtonColor;
-
   final bool animated;
+  final bool isConnected;
+  final Widget? extraWidget;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        // CircleDesignWidget(newButtonColor: newButtonColor, onTap: onTap, animated: animated),
         Semantics(
           button: true,
           enabled: enabled,
           label: label,
-          child: Container(
-            clipBehavior: Clip.antiAlias,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              boxShadow: [BoxShadow(blurRadius: 16, color: buttonColor.withValues(alpha: .5))],
-            ),
-            width: 148,
-            height: 148,
-            child: Material(
-              key: const ValueKey("home_connection_button"),
-              shape: const CircleBorder(),
-              color: Colors.white,
-              child: InkWell(
-                focusColor: Colors.grey,
-                onTap: onTap,
-                child: Padding(
-                  padding: const EdgeInsets.all(36),
-                  child: TweenAnimationBuilder(
-                    tween: ColorTween(end: buttonColor),
-                    duration: const Duration(milliseconds: 250),
-                    builder: (context, value, child) {
-                      if (useImage) {
-                        return image.image();
-                      } else {
-                        return Assets.images.logo.svg(colorFilter: ColorFilter.mode(value!, BlendMode.srcIn));
-                      }
-                    },
+          child: GestureDetector(
+            key: const ValueKey("home_connection_button"),
+            onTap: onTap,
+            child: Container(
+              width: 180,
+              height: 180,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    blurRadius: 24,
+                    spreadRadius: 2,
+                    color: buttonColor.withValues(alpha: .45),
                   ),
-                ),
+                ],
+              ),
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 300),
+                    child: isConnected
+                        ? Assets.images.connectButtonConnected.svg(
+                            key: const ValueKey("svg_connected"),
+                            fit: BoxFit.contain,
+                          )
+                        : Assets.images.connectButton.svg(
+                            key: const ValueKey("svg_disconnected"),
+                            fit: BoxFit.contain,
+                          ),
+                  ),
+                  AnimatedDefaultTextStyle(
+                    duration: const Duration(milliseconds: 300),
+                    style: TextStyle(
+                      fontSize: 115,
+                      fontWeight: FontWeight.w400,
+                      color: isConnected
+                          ? const Color(0xFF0F6E56)
+                          : const Color(0xFF185FA5),
+                      height: 1.0,
+                    ),
+                    child: const Text('Ω'),
+                  ),
+                ],
               ),
             ).animate(target: enabled ? 0 : 1).blurXY(end: 1),
           ).animate(target: enabled ? 0 : 1).scaleXY(end: .88, curve: Curves.easeIn),
@@ -265,22 +327,137 @@ class _ConnectionButton extends StatelessWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    // const Gap(8),
                     Icon(FontAwesomeIcons.shieldHalved, size: 16, color: Theme.of(context).colorScheme.secondary),
                     const Gap(4),
                     Text(
                       secureLabel,
-                      style: Theme.of(
-                        context,
-                      ).textTheme.titleSmall?.copyWith(color: Theme.of(context).colorScheme.secondary),
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        color: Theme.of(context).colorScheme.secondary,
+                      ),
                     ),
                   ],
                 ),
+              ],
+              if (extraWidget != null) ...[
+                const Gap(6),
+                extraWidget!,
               ],
             ],
           ),
         ),
       ],
+    );
+  }
+}
+
+// "НАЖМИТЕ ДЛЯ ПОДКЛЮЧЕНИЯ" shown when idle
+class _IdleSubtitle extends StatelessWidget {
+  const _IdleSubtitle();
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      'НАЖМИТЕ ДЛЯ ПОДКЛЮЧЕНИЯ',
+      style: TextStyle(
+        fontSize: 10,
+        letterSpacing: 2.0,
+        fontWeight: FontWeight.w500,
+        color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: .5),
+      ),
+    );
+  }
+}
+
+// "● HANDSHAKE · TLS 1.3" shown while connecting / waiting for first ping
+class _HandshakeIndicator extends StatelessWidget {
+  const _HandshakeIndicator();
+
+  @override
+  Widget build(BuildContext context) {
+    const gold = Color(0xFFD9CD7B);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 5,
+          height: 5,
+          decoration: const BoxDecoration(
+            color: gold,
+            shape: BoxShape.circle,
+            boxShadow: [BoxShadow(color: gold, blurRadius: 4)],
+          ),
+        ),
+        const SizedBox(width: 6),
+        const Text(
+          'HANDSHAKE · TLS 1.3',
+          style: TextStyle(
+            fontSize: 10,
+            letterSpacing: 2.0,
+            fontWeight: FontWeight.w500,
+            color: gold,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// Elapsed connection time: "00:42:15"
+class _ElapsedTimer extends StatelessWidget {
+  const _ElapsedTimer({required this.seconds});
+  final int seconds;
+
+  String _format() {
+    final h = (seconds ~/ 3600).toString().padLeft(2, '0');
+    final m = ((seconds % 3600) ~/ 60).toString().padLeft(2, '0');
+    final s = (seconds % 60).toString().padLeft(2, '0');
+    return '$h:$m:$s';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      _format(),
+      style: const TextStyle(
+        fontSize: 13,
+        letterSpacing: 1.5,
+        fontWeight: FontWeight.w400,
+        color: Color(0xFF5DCAA5),
+        fontFeatures: [],
+      ),
+    );
+  }
+}
+
+// Retry pill button shown on error state
+class _RetryPill extends StatelessWidget {
+  const _RetryPill({required this.onRetry});
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    const red = Color(0xFFFF6B6B);
+    return GestureDetector(
+      onTap: onRetry,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+        decoration: BoxDecoration(
+          border: Border.all(color: red.withValues(alpha: .55)),
+          color: red.withValues(alpha: .13),
+          borderRadius: BorderRadius.circular(99),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.refresh_rounded, size: 14, color: red),
+            const SizedBox(width: 6),
+            const Text(
+              'Повторить',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: red),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

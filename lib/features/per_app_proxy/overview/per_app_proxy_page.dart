@@ -51,7 +51,7 @@ class PerAppProxyPage extends HookConsumerWidget with PresLogger {
     final mode = ref.watch(Preferences.perAppProxyMode).toAppProxy();
     final selectedApps = ref.watch(PerAppProxyProvider(mode));
 
-    final hideSystemApps = useState(false);
+    final hideSystemApps = useState(true);
     final isSearching = useState(false);
     final searchQuery = useState("");
     final sortListener = useState(false);
@@ -327,10 +327,15 @@ class PerAppProxyPage extends HookConsumerWidget with PresLogger {
               ),
               value: flag == null ? false : PkgFlag.checkboxValue(flag),
               tristate: true,
+              selected: flag != null && PkgFlag.checkboxValue(flag) == true,
+              selectedTileColor: theme.colorScheme.primaryContainer.withValues(alpha: .22),
               onChanged: (_) => ref.read(PerAppProxyProvider(mode).notifier).updatePkg(package.packageName),
               secondary: package.icon == null
                   ? null
-                  : Image.memory(package.icon!, width: 48, height: 48, cacheWidth: 48, cacheHeight: 48),
+                  : ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: Image.memory(package.icon!, width: 44, height: 44, cacheWidth: 44, cacheHeight: 44),
+                    ),
             );
           },
           itemCount: packages.length,

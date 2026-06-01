@@ -1,15 +1,11 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:hiddify/core/model/failures.dart';
 import 'package:hiddify/features/proxy/model/proxy_failure.dart';
-import 'package:riverpod_annotation/riverpod_annotation.dart';
-import 'package:sentry_flutter/sentry_flutter.dart';
 
-FutureOr<SentryEvent?> sentryBeforeSend(SentryEvent event, {Hint? hint}) {
-  if (canSendEvent(event.throwable)) return event;
-  return null;
-}
+// Sentry analytics removed in AxiOm. These helpers are retained for compilation compatibility.
 
 bool canSendEvent(dynamic throwable) {
   return switch (throwable) {

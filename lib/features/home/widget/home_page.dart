@@ -1,14 +1,22 @@
+import 'dart:async';
+
 import 'package:dartx/dartx.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:gap/gap.dart';
 import 'package:hiddify/core/app_info/app_info_provider.dart';
 import 'package:hiddify/core/localization/translations.dart';
 import 'package:hiddify/core/router/bottom_sheets/bottom_sheets_notifier.dart';
+import 'package:hiddify/features/connection/model/connection_status.dart';
+import 'package:hiddify/features/connection/notifier/connection_notifier.dart';
+import 'package:hiddify/features/home/data/device_count_provider.dart';
 import 'package:hiddify/features/home/widget/connection_button.dart';
+import 'package:hiddify/features/home/widget/split_tunneling_card.dart';
+import 'package:hiddify/features/profile/model/profile_entity.dart';
 import 'package:hiddify/features/profile/notifier/active_profile_notifier.dart';
-import 'package:hiddify/features/profile/widget/profile_tile.dart';
 import 'package:hiddify/features/proxy/active/active_proxy_card.dart';
 import 'package:hiddify/features/proxy/active/active_proxy_delay_indicator.dart';
+import 'package:hiddify/features/proxy/active/active_proxy_notifier.dart';
 import 'package:hiddify/gen/assets.gen.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:sliver_tools/sliver_tools.dart';
@@ -22,6 +30,8 @@ class HomePage extends HookConsumerWidget {
     final t = ref.watch(translationsProvider).requireValue;
     // final hasAnyProfile = ref.watch(hasAnyProfileProvider);
     final activeProfile = ref.watch(activeProfileProvider);
+    final connectionStatus = ref.watch(connectionNotifierProvider);
+    final isConnected = connectionStatus is AsyncData && connectionStatus.value is Connected;
 
     return Scaffold(
       appBar: AppBar(
@@ -34,7 +44,41 @@ class HomePage extends HookConsumerWidget {
         //     : null,
         title: Row(
           children: [
-            Assets.images.logo.svg(height: 24),
+            SizedBox(
+              width: 32,
+              height: 32,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 300),
+                    child: isConnected
+                        ? Assets.images.navbarIconConnected.svg(
+                            key: const ValueKey("nav_connected"),
+                            width: 32,
+                            height: 32,
+                          )
+                        : Assets.images.navbarIcon.svg(
+                            key: const ValueKey("nav_disconnected"),
+                            width: 32,
+                            height: 32,
+                          ),
+                  ),
+                  AnimatedDefaultTextStyle(
+                    duration: const Duration(milliseconds: 300),
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w400,
+                      color: isConnected
+                          ? const Color(0xFF5DCAA5)
+                          : const Color(0xFF5BA3FF),
+                      height: 1.0,
+                    ),
+                    child: const Text('Ω'),
+                  ),
+                ],
+              ),
+            ),
             const Gap(8),
             Text.rich(
               TextSpan(
@@ -108,15 +152,9 @@ class HomePage extends HookConsumerWidget {
                     // AsyncData(value: final profile?) =>
                     MultiSliver(
                       children: [
-                        // const Gap(100),
                         switch (activeProfile) {
-                          AsyncData(value: final profile?) => ProfileTile(
-                            profile: profile,
-                            isMain: true,
-                            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                            color: Theme.of(context).colorScheme.surfaceContainer,
-                          ),
-                          _ => const Text(""),
+                          AsyncData(value: final profile?) => _ProfileChip(profile: profile),
+                          _ => const SizedBox.shrink(),
                         },
                         const SliverFillRemaining(
                           hasScrollBody: false,
@@ -130,6 +168,8 @@ class HomePage extends HookConsumerWidget {
                                   children: [ConnectionButton(), ActiveProxyDelayIndicator()],
                                 ),
                               ),
+                              _StatRow(),
+                              SplitTunnelingCard(),
                               ActiveProxyFooter(),
                             ],
                           ),
@@ -145,6 +185,190 @@ class HomePage extends HookConsumerWidget {
                     // },
                   ],
                 ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Compact pill showing active profile name — taps open profiles overview
+class _ProfileChip extends ConsumerWidget {
+  const _ProfileChip({required this.profile});
+  final ProfileEntity profile;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    const activeColor = Color(0xFF5DCAA5);
+
+    return GestureDetector(
+      onTap: () => ref.read(bottomSheetsNotifierProvider.notifier).showProfilesOverview(),
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainer,
+          borderRadius: BorderRadius.circular(99),
+          border: Border.all(color: theme.colorScheme.outline.withValues(alpha: .3)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 6,
+              height: 6,
+              decoration: BoxDecoration(
+                color: profile.active ? activeColor : theme.colorScheme.outlineVariant,
+                shape: BoxShape.circle,
+                boxShadow: profile.active
+                    ? [BoxShadow(color: activeColor.withValues(alpha: .55), blurRadius: 5)]
+                    : null,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                profile.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
+              ),
+            ),
+            Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: theme.colorScheme.onSurfaceVariant),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// 4-column stats bar: traffic / days / ping / devices
+class _StatRow extends HookConsumerWidget {
+  const _StatRow();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final activeProfile = ref.watch(activeProfileProvider).valueOrNull;
+    final activeProxy = ref.watch(activeProxyNotifierProvider).valueOrNull;
+    final theme = Theme.of(context);
+
+    final subInfo = activeProfile is RemoteProfileEntity ? activeProfile.subInfo : null;
+
+    String trafficStr = '—';
+    String daysStr = '—';
+    if (subInfo != null) {
+      if (subInfo.total > 10 * 1099511627776) {
+        trafficStr = '∞';
+      } else {
+        final usedGB = subInfo.consumption / 1073741824.0;
+        final totalGB = subInfo.total / 1073741824.0;
+        trafficStr = '${usedGB.toStringAsFixed(1)}/${totalGB.toStringAsFixed(0)} ГБ';
+      }
+      daysStr = subInfo.isExpired ? '0' : '${subInfo.remaining.inDays}';
+    }
+
+    final url = activeProfile is RemoteProfileEntity ? activeProfile.url : null;
+    final token = url != null ? extractDeviceUsername(url) : null;
+
+    // Refresh device count on connect/disconnect transitions.
+    ref.listen(connectionNotifierProvider, (prev, next) {
+      final was = prev?.valueOrNull is Connected;
+      final now = next.valueOrNull is Connected;
+      if (was != now && token != null) {
+        ref.invalidate(deviceCountProvider(token));
+      }
+    });
+
+    // Poll every 10 s while the app is in the foreground; stop when backgrounded.
+    final lifecycle = useAppLifecycleState();
+    final isForeground = lifecycle == null || lifecycle == AppLifecycleState.resumed;
+    useEffect(() {
+      if (token == null || !isForeground) return null;
+      final timer = Timer.periodic(
+        const Duration(seconds: 10),
+        (_) => ref.invalidate(deviceCountProvider(token)),
+      );
+      return timer.cancel;
+    }, [token, isForeground]);
+
+    final deviceInfo =
+        token != null ? ref.watch(deviceCountProvider(token)).valueOrNull : null;
+    String devicesStr = '—';
+    if (deviceInfo != null) {
+      final limitStr = deviceInfo.limit == 0 ? '∞' : '${deviceInfo.limit}';
+      devicesStr = '${deviceInfo.connected}/$limitStr';
+    }
+
+    final connectionStatus = ref.watch(connectionNotifierProvider);
+    final isConnected = connectionStatus is AsyncData && connectionStatus.value is Connected;
+    final delay = activeProxy?.urlTestDelay ?? 0;
+    final pingStr = (isConnected && delay > 0 && delay < 65000) ? '${delay}мс' : '—';
+    final pingColor = (isConnected && delay > 0 && delay < 65000)
+        ? (delay < 300 ? const Color(0xFF5DCAA5) : const Color(0xFFD9CD7B))
+        : null;
+
+    final dividerColor = theme.colorScheme.outline.withValues(alpha: .2);
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: dividerColor),
+      ),
+      child: IntrinsicHeight(
+        child: Row(
+          children: [
+            _StatCell(label: 'ТРАФИК', value: trafficStr),
+            VerticalDivider(width: 1, color: dividerColor),
+            _StatCell(label: 'ДНИ', value: daysStr),
+            VerticalDivider(width: 1, color: dividerColor),
+            _StatCell(label: 'ПИНГ', value: pingStr, valueColor: pingColor),
+            VerticalDivider(width: 1, color: dividerColor),
+            _StatCell(label: 'УСТРОЙСТВА', value: devicesStr),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _StatCell extends StatelessWidget {
+  const _StatCell({required this.label, required this.value, this.valueColor});
+  final String label;
+  final String value;
+  final Color? valueColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Expanded(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              maxLines: 1,
+              softWrap: false,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 8.5,
+                letterSpacing: 1.4,
+                fontWeight: FontWeight.w500,
+                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: .55),
+              ),
+            ),
+            const SizedBox(height: 3),
+            Text(
+              value,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w500,
+                color: valueColor ?? theme.colorScheme.onSurface,
+                letterSpacing: -0.2,
               ),
             ),
           ],
