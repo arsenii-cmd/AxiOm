@@ -77,4 +77,4 @@ AxiOm is derived from the following open-source projects — please support and 
 
 This fork inherits the upstream license. See [LICENSE.md](LICENSE.md) for the full terms, which apply to all derivative work in this repository.
 
-> The original upstream README (with full project background and translations) is preserved in the git history and in the language-specific files such as [README_ru.md](README_ru.md).
+> The original upstream README (with full project background and translations) is preserved in the git history and in the language-specific files such as [README_ru.md](README_ru.md)
